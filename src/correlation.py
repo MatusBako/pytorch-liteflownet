@@ -243,7 +243,6 @@ def cupy_kernel(strFunction, objectVariables):
 
 		if objectMatch is None:
 			break
-		# end
 
 		intArg = int(objectMatch.group(2))
 
@@ -251,32 +250,29 @@ def cupy_kernel(strFunction, objectVariables):
 		intSizes = objectVariables[strTensor].size()
 
 		strKernel = strKernel.replace(objectMatch.group(), str(intSizes[intArg]))
-	# end
 
 	while True:
 		objectMatch = re.search('(VALUE_)([0-4])(\()([^\)]+)(\))', strKernel)
 
 		if objectMatch is None:
 			break
-		# end
 
 		intArgs = int(objectMatch.group(2))
 		strArgs = objectMatch.group(4).split(',')
 
 		strTensor = strArgs[0]
 		intStrides = objectVariables[strTensor].stride()
-		strIndex = [ '((' + strArgs[intArg + 1].replace('{', '(').replace('}', ')').strip() + ')*' + str(intStrides[intArg]) + ')' for intArg in range(intArgs) ]
+		strIndex = ['((' + strArgs[intArg + 1].replace('{', '(').replace('}', ')').strip() + ')*' + str(intStrides[intArg]) + ')' for intArg in range(intArgs)]
 
 		strKernel = strKernel.replace(objectMatch.group(0), strTensor + '[' + str.join('+', strIndex) + ']')
-	# end
 
 	return strKernel
-# end
+
 
 @cupy.util.memoize(for_each_device=True)
 def cupy_launch(strFunction, strKernel):
 	return cupy.cuda.compile_with_cache(strKernel).get_function(strFunction)
-# end
+
 
 class _FunctionCorrelation(torch.autograd.Function):
 	@staticmethod
@@ -288,12 +284,12 @@ class _FunctionCorrelation(torch.autograd.Function):
 
 		self.intStride = intStride
 
-		assert(first.is_contiguous() == True)
-		assert(second.is_contiguous() == True)
+		assert(first.is_contiguous())
+		assert(second.is_contiguous())
 
 		output = first.new_zeros([ first.size(0), 49, int(math.ceil(first.size(2) / intStride)), int(math.ceil(first.size(3) / intStride)) ])
 
-		if first.is_cuda == True:
+		if first.is_cuda:
 			n = first.size(2) * first.size(3)
 			cupy_launch('kernel_Correlation_rearrange', cupy_kernel('kernel_Correlation_rearrange', {
 				'intStride': self.intStride,
@@ -325,31 +321,27 @@ class _FunctionCorrelation(torch.autograd.Function):
 				'rbot1': rbot1,
 				'top': output
 			}))(
-				grid=tuple([ output.size(3), output.size(2), output.size(0) ]),
-				block=tuple([ 32, 1, 1 ]),
+				grid=tuple([output.size(3), output.size(2), output.size(0)]),
+				block=tuple([32, 1, 1]),
 				shared_mem=first.size(1) * 4,
 				args=[ n, rbot0.data_ptr(), rbot1.data_ptr(), output.data_ptr() ],
 				stream=Stream
 			)
-
-		elif first.is_cuda == False:
+		elif not first.is_cuda:
 			raise NotImplementedError()
 
-		# end
-
 		return output
-	# end
 
 	@staticmethod
 	def backward(self, gradOutput):
 		first, second, rbot0, rbot1 = self.saved_tensors
 
-		assert(gradOutput.is_contiguous() == True)
+		assert(gradOutput.is_contiguous())
 
-		gradFirst = first.new_zeros([ first.size(0), first.size(1), first.size(2), first.size(3) ]) if self.needs_input_grad[0] == True else None
-		gradSecond = first.new_zeros([ first.size(0), first.size(1), first.size(2), first.size(3) ]) if self.needs_input_grad[1] == True else None
+		gradFirst = first.new_zeros([first.size(0), first.size(1), first.size(2), first.size(3)]) if self.needs_input_grad[0] else None
+		gradSecond = first.new_zeros([first.size(0), first.size(1), first.size(2), first.size(3)]) if self.needs_input_grad[1] else None
 
-		if first.is_cuda == True:
+		if first.is_cuda:
 			if gradFirst is not None:
 				for intSample in range(first.size(0)):
 					n = first.size(1) * first.size(2) * first.size(3)
@@ -361,13 +353,11 @@ class _FunctionCorrelation(torch.autograd.Function):
 						'gradFirst': gradFirst,
 						'gradSecond': None
 					}))(
-						grid=tuple([ int((n + 512 - 1) / 512), 1, 1 ]),
-						block=tuple([ 512, 1, 1 ]),
-						args=[ n, intSample, rbot0.data_ptr(), rbot1.data_ptr(), gradOutput.data_ptr(), gradFirst.data_ptr(), None ],
+						grid=tuple([int((n + 512 - 1) / 512), 1, 1]),
+						block=tuple([512, 1, 1]),
+						args=[n, intSample, rbot0.data_ptr(), rbot1.data_ptr(), gradOutput.data_ptr(), gradFirst.data_ptr(), None],
 						stream=Stream
 					)
-				# end
-			# end
 
 			if gradSecond is not None:
 				for intSample in range(first.size(0)):
@@ -385,28 +375,20 @@ class _FunctionCorrelation(torch.autograd.Function):
 						args=[ n, intSample, rbot0.data_ptr(), rbot1.data_ptr(), gradOutput.data_ptr(), None, gradSecond.data_ptr() ],
 						stream=Stream
 					)
-				# end
-			# end
 
-		elif first.is_cuda == False:
+		elif not first.is_cuda:
 			raise NotImplementedError()
 
-		# end
-
 		return gradFirst, gradSecond, None
-	# end
-# end
+
 
 def FunctionCorrelation(tensorFirst, tensorSecond, intStride):
 	return _FunctionCorrelation.apply(tensorFirst, tensorSecond, intStride)
-# end
+
 
 class ModuleCorrelation(torch.nn.Module):
 	def __init__(self):
 		super(ModuleCorrelation, self).__init__()
-	# end
 
 	def forward(self, tensorFirst, tensorSecond, intStride):
 		return _FunctionCorrelation.apply(tensorFirst, tensorSecond, intStride)
-	# end
-# end
