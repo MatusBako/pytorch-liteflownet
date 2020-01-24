@@ -1,14 +1,14 @@
 import torch
 
 from src import correlation
-from src.backward import backward
 
 
 class Matching(torch.nn.Module):
-    def __init__(self, level: int):
+    def __init__(self, level: int, warp):
         super(Matching, self).__init__()
 
-        self.dblBackward = [0.0, 0.0, 10.0, 5.0, 2.5, 1.25, 0.625][level]
+        self.warp_weight = [0.0, 0.0, 10.0, 5.0, 2.5, 1.25, 0.625][level]
+        self.warp = warp
 
         if level != 2:
             self.moduleFeat = torch.nn.Sequential()
@@ -46,7 +46,7 @@ class Matching(torch.nn.Module):
 
         if flow_tensor is not None:
             flow_tensor = self.moduleUpflow(flow_tensor)
-            features_tensor2 = backward(input_tensor=features_tensor2, flow_tensor=flow_tensor * self.dblBackward)
+            features_tensor2 = self.warp(input_tensor=features_tensor2, flow_tensor=flow_tensor * self.warp_weight)
 
         if self.moduleUpcorr is None:
             correlation_tensor = torch.nn.functional.leaky_relu(

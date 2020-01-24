@@ -10,6 +10,7 @@ import sys
 from argparse import ArgumentParser
 from os.path import isabs
 
+from src.warp import Warp
 from src.features import Features
 from src.matching import Matching
 from src.regularization import Regularization
@@ -26,10 +27,12 @@ class Network(torch.nn.Module):
 	def __init__(self, model_path):
 		super(Network, self).__init__()
 
+		warp = Warp()
+
 		self.moduleFeatures = Features()
-		self.moduleMatching = torch.nn.ModuleList([Matching(intLevel) for intLevel in [2, 3, 4, 5, 6]])
-		self.moduleSubpixel = torch.nn.ModuleList([Subpixel(intLevel) for intLevel in [2, 3, 4, 5, 6]])
-		self.moduleRegularization = torch.nn.ModuleList([Regularization(intLevel) for intLevel in [2, 3, 4, 5, 6]])
+		self.moduleMatching = torch.nn.ModuleList([Matching(intLevel, warp) for intLevel in [2, 3, 4, 5, 6]])
+		self.moduleSubpixel = torch.nn.ModuleList([Subpixel(intLevel, warp) for intLevel in [2, 3, 4, 5, 6]])
+		self.moduleRegularization = torch.nn.ModuleList([Regularization(intLevel, warp) for intLevel in [2, 3, 4, 5, 6]])
 
 		if isabs(model_path):
 			self.load_state_dict(torch.load(model_path))

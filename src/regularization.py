@@ -1,13 +1,14 @@
 import torch
 
-from src.backward import backward
+from src.warp import Warp
 
 
 class Regularization(torch.nn.Module):
-    def __init__(self, level: int):
+    def __init__(self, level: int, warp: Warp):
         super(Regularization, self).__init__()
 
-        self.backward_weight: float = [0.0, 0.0, 10.0, 5.0, 2.5, 1.25, 0.625][level]
+        self.warp = warp
+        self.warp_weight: float = [0.0, 0.0, 10.0, 5.0, 2.5, 1.25, 0.625][level]
         self.unfold: int = [0, 0, 7, 5, 5, 3, 3][level]
 
         if level >= 5:
@@ -53,15 +54,13 @@ class Regularization(torch.nn.Module):
 
     def forward(self, tensor1, tensor2, features_tensor1, features_tensor2, flow_tensor):
         # occusion probability map = brightness error => L2_dist(i1, i2)
-        warp = backward(input_tensor=tensor2, flow_tensor=flow_tensor * self.backward_weight)
+        warp = self.warp(input_tensor=tensor2, flow_tensor=flow_tensor * self.warp_weight)
         difference_tensor = (tensor1 - warp).pow(2.0).sum(1, True).sqrt().detach()
 
         dist_in = torch.cat([
             difference_tensor,
             # preco robi mean cez kazdy kanal?
-            flow_tensor - flow_tensor.view(flow_tensor.size(0), 2, -1).mean(2, True).view(flow_tensor.size(0), 2, 1, 1),
-            # lepsi zapis?
-            # flow_tensor - flow_tensor.mean((2, 3), keepdim=True),
+            flow_tensor - flow_tensor.mean((2, 3), keepdim=True),
             self.moduleFeat(features_tensor1)]
         , 1)
 
@@ -73,7 +72,7 @@ class Regularization(torch.nn.Module):
         # reciprocal(x): return 1 / x
         divisor_tensor = dist_tensor.sum(1, True).reciprocal()
 
-        # ?? boh vi
+        # ??
         unfolded1 = torch.nn.functional.unfold(input=flow_tensor[:, 0:1, :, :], kernel_size=self.unfold, stride=1,
                                                padding=int((self.unfold - 1) / 2)).view_as(dist_tensor)
         unfolded2 = torch.nn.functional.unfold(input=flow_tensor[:, 1:2, :, :], kernel_size=self.unfold, stride=1,

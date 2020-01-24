@@ -1,13 +1,12 @@
 import torch
 
-from src.backward import backward
-
 
 class Subpixel(torch.nn.Module):
-    def __init__(self, level: int):
+    def __init__(self, level: int, warp):
         super(Subpixel, self).__init__()
 
-        self.backward_weight: float = [0.0, 0.0, 10.0, 5.0, 2.5, 1.25, 0.625][level]
+        self.warp = warp
+        self.warp_weight: float = [0.0, 0.0, 10.0, 5.0, 2.5, 1.25, 0.625][level]
 
         if level != 2:
             self.moduleFeat = torch.nn.Sequential()
@@ -32,8 +31,8 @@ class Subpixel(torch.nn.Module):
         features_tensor2 = self.moduleFeat(features_tensor2)
 
         if flow_tensor is not None:
-            features_tensor2 = backward(input_tensor=features_tensor2,
-                                        flow_tensor=flow_tensor * self.backward_weight)
+            features_tensor2 = self.warp(input_tensor=features_tensor2,
+                                        flow_tensor=flow_tensor * self.warp_weight)
 
         return (flow_tensor if flow_tensor is not None else 0.) + \
             self.moduleMain(torch.cat([features_tensor1, features_tensor2, flow_tensor], 1))
