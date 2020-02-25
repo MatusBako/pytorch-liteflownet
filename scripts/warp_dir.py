@@ -6,7 +6,6 @@ Compare original image with image warped using optical flow. (cycle using arrows
 
 import cv2
 import numpy as np
-import pickle
 import re
 
 from argparse import ArgumentParser
@@ -39,8 +38,8 @@ def warp_flow(img, flow):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("input", help="Path to image or directory with images.", default="cv_flows")
-    parser.add_argument("flow", help="Path to image or directory with images.", default="cv_flows")
+    parser.add_argument("input", help="Path to image or directory with images.")
+    parser.add_argument("flow", help="Path to image or directory with images.")
     args = parser.parse_args()
 
     assert isfile(args.input) and isfile(args.flow) or isdir(args.input) and isdir(args.flow), "Given path does not point to file or directory!"

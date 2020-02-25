@@ -29,7 +29,7 @@ def natural_keys(text):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("input", help="Path to image or directory with images.", default="cv_flows")
+    parser.add_argument("input", help="Path to image or directory with flow.", default="cv_flows")
     args = parser.parse_args()
 
     assert isfile(args.input) or isdir(args.input), "Given path does not point to file or directory!"
