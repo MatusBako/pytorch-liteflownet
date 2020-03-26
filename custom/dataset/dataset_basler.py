@@ -1,8 +1,10 @@
+import cv2
 import re
 import torch.utils.data as data
 
 from copy import deepcopy
 from io import BytesIO
+from flowiz import convert_from_flow
 from functools import partial
 import numpy as np
 from operator import add
@@ -10,6 +12,7 @@ from os import listdir
 from os.path import join, dirname, basename, isdir
 import pickle
 from PIL import Image
+from scipy.ndimage import rotate
 from torch import tensor
 from torchvision.transforms import Compose, Resize, ToTensor, RandomAffine
 from torchvision.transforms.functional import crop
@@ -55,7 +58,7 @@ def build_transform(rng, h, w):
     ])
 
 
-class Dataset(data.Dataset):
+class DatasetBasler(data.Dataset):
     def __init__(self, dataset_dir, input_transform=None, length=None):
 
         super().__init__()
@@ -90,7 +93,7 @@ class Dataset(data.Dataset):
         i2 = i2[crop[0]:crop[0] + crop_size, crop[1]:crop[1] + crop_size]
 
         for i in range(len(flows) - 1, -1, -1):
-            flows[i] = flows[i][0, :, crop[0]:crop[0] + crop_size, crop[1]:crop[1] + crop_size]
+            flows[i] = flows[i][:, crop[0]:crop[0] + crop_size, crop[1]:crop[1] + crop_size]
             crop = [coord // 2 for coord in crop]
             crop_size //= 2
 
@@ -111,18 +114,18 @@ class Dataset(data.Dataset):
         return float(m.T[0]), float(m.T[1])
 
     def random_rotate(self, i1, i2, flows):
-        from scipy.ndimage import rotate
-
-        angle = np.pi #np.random.rand() * 2 * np.pi
+        angle = np.random.rand() * 2 * np.pi
 
         i1 = rotate(i1, np.degrees(angle), axes=(0, 1))
         i2 = rotate(i2, np.degrees(angle), axes=(0, 1))
 
+        # TODO: possibility for random rotation that we crop area without original picture inside
+        #  possible workaround -> generate only small rotations, but how small?
         for idx, flow in enumerate(flows):
             # rotate each point in optical flow (vector for each point)
-            flow = np.apply_along_axis(Dataset.rotate_via_numpy, 1, flow, angle)
+            flow = np.apply_along_axis(DatasetBasler.rotate_via_numpy, 0, flow, angle)
             # rotate optical flow as a whole
-            flows[idx] = rotate(flow, np.degrees(angle), axes=(0, 1))
+            flows[idx] = rotate(flow, np.degrees(angle), axes=(1, 2))
 
         return i1, i2, flows
 
@@ -132,11 +135,21 @@ class Dataset(data.Dataset):
         slices = tuple(map(slice, start, end))
         return img[slices]
 
+    def _debug_display(self, i1, i2, flows, winpref="", wait=True):
+        cv2.imshow(winpref + "1", cv2.cvtColor(i1, cv2.COLOR_GRAY2BGR))
+        cv2.imshow(winpref + "2", cv2.cvtColor(i2, cv2.COLOR_GRAY2BGR))
+        cv2.imshow(winpref + "f", cv2.cvtColor(convert_from_flow(flows[-1].transpose((1, 2, 0))), cv2.COLOR_RGB2BGR))
+        if wait:
+            cv2.waitKey()
+
     def __getitem__(self, index):
         flow_path = self.flows[index]
 
         with open(flow_path, "rb") as f:
             flow = pickle.load(f)
+
+        if len(flow[0].shape) == 4:
+            flow = [f.squeeze(0) for f in flow]
 
         base1, base2 = basename(flow_path).split(".")[0].split("-")
 
@@ -157,9 +170,13 @@ class Dataset(data.Dataset):
 
         crop_size = 256
 
+        # self._debug_display(i1, i2, flow, winpref="full")
+
         # TODO: skip rotation for now
         # i1, i2, flow = self.random_rotate(i1, i2, flow)
         i1, i2, flow = self.random_crop(i1, i2, flow, crop_size)
+
+        # self._debug_display(i1, i2, flow)
 
         return tensor(i1).unsqueeze(0).float(), tensor(i2).unsqueeze(0).float(), [tensor(f) for f in flow]
 
